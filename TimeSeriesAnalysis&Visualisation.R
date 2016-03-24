@@ -7,6 +7,7 @@
 
 # load required packages
 library(psych)
+library(forecast)
 library(ggplot2)
 library(reshape2)
 library(dplyr)
@@ -28,8 +29,9 @@ theme = theme_set(theme_minimal())
 theme = theme_update(legend.position="top")
 
 
-
-mySeries <- read.csv('deaths.csv',
+#import csvs assume the same format... preliminary calculations performed externally
+#change input csv filename
+mySeries <- read.csv('MYTIMESERIES.csv',
                      header=T,
                      sep=",",
                      quote='"',
@@ -87,11 +89,10 @@ mySeries$res <- as.vector(mySeries_reg$residuals)
 
 ###### VISUALISATIONS ###### 
 
-bw <- round(diff(range(mySeries[,3])) / (2 * IQR(mySeries[,3]) / length(mySeries[,3])^(1/3)),0)
-#bw <- round(sqrt(dim(mySeries)[1]), 0)
-
-bw.t <- round(diff(range(mySeries$res.trend)) / (2 * IQR(mySeries$res.trend) / length(mySeries$res.trend)^(1/3)),0)
-bw.s <- round(diff(range(mySeries$res.deseason)) / (2 * IQR(mySeries$res.deseason) / length(mySeries$res.deseason)^(1/3)),0)
+#auto bin ranges
+bw <- round(diff(range(mySeries[,3])) / (2 * IQR(mySeries[,3]) / length(mySeries[,3])^(1/3)),0) * 15
+bw.t <- round(diff(range(mySeries$res.trend)) / (2 * IQR(mySeries$res.trend) / length(mySeries$res.trend)^(1/3)),0) * 15
+bw.s <- round(diff(range(mySeries$res.deseason)) / (2 * IQR(mySeries$res.deseason) / length(mySeries$res.deseason)^(1/3)),0) * 15
 
 #histogram
 ggplot(data = mySeries, 
@@ -267,11 +268,7 @@ ggplot(data = acfdf,
 
 
 
-
-
-##### FIT ARIMA MODELS #####
-#http://www.stat.pitt.edu/stoffer/tsa2/Rissues.htm
-#http://stats.stackexchange.com/questions/64711/ljung-box-statistics-for-arima-residuals-in-r-confusing-test-results
+##### FIT ARIMA MODELS ####
 
 #model functions
 
@@ -285,6 +282,7 @@ AR.1.arOLS <- ar.ols(mySeries$res.deseason,
                      demean=F, 
                      intercept=T)
 
+#arima functions for AR(1)
 AR.1.arima <- arima(mySeries$res.deseason, 
                     order = c(1,0,0))
 
@@ -292,6 +290,13 @@ AR.1.arima <- arima(mySeries$res.deseason,
 AR.1.arima.constant <- arima(mySeries$res.deseason, 
                              order = c(1,0,0), 
                              xreg=1:length(mySeries$res.deseason))
+
+summary(AR.1.arima.constant)
+
+acf(residuals(AR.1.arima.constant))
+
+#auto selection from the 'forecast' package
+auto.arima(mySeries$res.deseason)
 
 
 #model diagnostics
@@ -305,6 +310,24 @@ dev.off()
 Box.test(AR.1.arima.constant$residuals,
          type="Ljung",lag=20)
 #change lag for Jeans
+
+#visualisations of residuals
+AR.residuals <- data.frame(residuals(AR.1.arima.constant))
+
+#histogram of AR residuals
+ggplot(data = AR.residuals, 
+       aes(x=c(AR.residuals$residuals.AR.1.arima.constant.))) + 
+  geom_histogram(binwidth=bw.s*10) +
+  ggtitle(paste0(colnames(mySeries)[3], ' Histogram AR(1) Residuals (bin=', bw.s*10,')')) +
+  ggsave(paste0(colnames(mySeries)[3],' Histogram for ', 'res.AR', '.png'))
+
+#timeseries - residual QQ plot
+ggplot(data = AR.residuals, 
+       aes(sample=residuals.AR.1.arima.constant.)) +
+  stat_qq(colour='goldenrod') +
+  ggtitle(paste0('Q-Q Plot for ',colnames(mySeries)[3],' AR residuals')) +
+  ggsave(paste0('Q-Q Plot for ',colnames(mySeries)[3],' AR residuals.png')) 
+
 
 
 
